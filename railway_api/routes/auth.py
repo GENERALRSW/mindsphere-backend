@@ -89,70 +89,75 @@ def serialize_doc(doc):
 
 @router.post("/register", response_model=TokenResponse)
 async def register(user_data: UserRegister):
-    """
-    Register a new user account
-    Creates user profile and default avatar
-    Returns JWT token for immediate login
-    """
-    users_collection = get_users_collection()
-    avatars_collection = get_avatars_collection()
-    
-    # Check if username already exists
-    existing_user = await users_collection.find_one({"username": user_data.username.lower()})
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already registered"
+    try:
+        users_collection = get_users_collection()
+        avatars_collection = get_avatars_collection()
+        
+        # Check if username already exists
+        existing_user = await users_collection.find_one({"username": user_data.username.lower()})
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Username already registered"
+            )
+        
+        # Check if email already exists
+        existing_email = await users_collection.find_one({"email": user_data.email.lower()})
+        if existing_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already registered"
+            )
+        
+        # Hash password
+        hashed_password = get_password_hash(user_data.password)
+        
+        # Create user document
+        user_doc = {
+            "username": user_data.username.lower(),
+            "email": user_data.email.lower(),
+            "password_hash": hashed_password,
+            "display_name": user_data.display_name or user_data.username,
+            "anonymous_mode": user_data.anonymous_mode,
+            "language_preference": user_data.language_preference,
+            "created_at": datetime.utcnow(),
+            "last_login": datetime.utcnow(),
+            "is_active": True,
+            "is_verified": False,
+            "profile_complete": False
+        }
+        
+        # Insert user
+        result = await users_collection.insert_one(user_doc)
+        user_id = str(result.inserted_id)
+        
+        # Create default avatar
+        avatar = AvatarState(user_id=user_id)
+        await avatars_collection.insert_one(avatar.dict())
+        
+        # Create JWT token
+        token_data = {
+            "sub": user_id,
+            "username": user_data.username.lower(),
+            "type": "user"
+        }
+        access_token = create_access_token(token_data)
+        
+        return TokenResponse(
+            access_token=access_token,
+            user_id=user_id,
+            username=user_data.username.lower(),
+            display_name=user_data.display_name or user_data.username
         )
     
-    # Check if email already exists
-    existing_email = await users_collection.find_one({"email": user_data.email.lower()})
-    if existing_email:
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Registration error: {str(e)}")  # Log to console
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Registration failed: {str(e)}"
         )
-    
-    # Hash password
-    hashed_password = get_password_hash(user_data.password)
-    
-    # Create user document
-    user_doc = {
-        "username": user_data.username.lower(),
-        "email": user_data.email.lower(),
-        "password_hash": hashed_password,
-        "display_name": user_data.display_name or user_data.username,
-        "anonymous_mode": user_data.anonymous_mode,
-        "language_preference": user_data.language_preference,
-        "created_at": datetime.utcnow(),
-        "last_login": datetime.utcnow(),
-        "is_active": True,
-        "is_verified": False,  # Email verification
-        "profile_complete": False
-    }
-    
-    # Insert user
-    result = await users_collection.insert_one(user_doc)
-    user_id = str(result.inserted_id)
-    
-    # Create default avatar
-    avatar = AvatarState(user_id=user_id)
-    await avatars_collection.insert_one(avatar.dict())
-    
-    # Create JWT token
-    token_data = {
-        "sub": user_id,
-        "username": user_data.username.lower(),
-        "type": "user"
-    }
-    access_token = create_access_token(token_data)
-    
-    return TokenResponse(
-        access_token=access_token,
-        user_id=user_id,
-        username=user_data.username.lower(),
-        display_name=user_data.display_name or user_data.username
-    )
 
 @router.post("/login", response_model=TokenResponse)
 async def login(credentials: UserLogin):
