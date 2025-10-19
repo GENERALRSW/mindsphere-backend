@@ -1,44 +1,11 @@
-# nixpacks.toml  (root)
-
-[phases.setup]
-# optional utilities; not strictly required, but helpful
-packages = ["bash", "coreutils"]
-
 [phases.install]
 cmds = [
-  # venv
   "python -m venv /opt/venv",
   ". /opt/venv/bin/activate",
-
-  # Show what Nixpacks would read at repo root
-  "echo '=== RAW requirements.txt (root) ==='",
-  "nl -ba requirements.txt | sed -n '1,80p' || true",
-
-  # If you keep the real deps in railway_api/, show that too
-  "if [ -f railway_api/requirements.txt ]; then echo '=== RAW railway_api/requirements.txt ==='; nl -ba railway_api/requirements.txt | sed -n '1,80p'; fi",
-
-  # Build a sanitized copy that only allows valid requirement characters
-  # Strip BOM, CR, zero-width, control chars, and Markdown code fences if any
-  "echo '=== SANITIZING → requirements.clean.txt ==='",
-  "cat requirements.txt | "                                # start with the root file
-  "tr -d '\\r' | "                                         # remove CR (Windows line endings)
-  "sed '1 s/^\\xEF\\xBB\\xBF//' | "                        # strip UTF-8 BOM if present
-  "tr -d '\\000-\\010\\013-\\014\\016-\\037' | "           # remove control chars except \\t and \\n
-  "sed '/^\\s*```\\s*$/d' | "                              # drop code-fence lines if any slipped in
-  "awk 'NF>0' > requirements.clean.txt",                   # drop empty lines
-
-  # Show what we’ll actually install
-  "echo '=== requirements.clean.txt (final used) ==='",
-  "nl -ba requirements.clean.txt | sed -n '1,80p'",
-
-  # Upgrade tooling and install
+  "tr -d '\r' < requirements.txt | sed -e '1 s/^\\xEF\\xBB\\xBF//' -e '/^```*$/d' -e '/^\\s*$/d' > requirements.clean.txt",
   "pip install --upgrade pip setuptools wheel",
   "pip install -r requirements.clean.txt"
 ]
 
-[phases.build]
-# Do nothing here so we don’t re-run a second pip install that could fail again
-cmds = ["echo build phase skipped (already installed in install phase)"]
-
 [start]
-cmd = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+cmd = "bash -lc 'cd railway_api && uvicorn main:app --host 0.0.0.0 --port $PORT'"
