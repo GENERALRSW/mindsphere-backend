@@ -11,7 +11,7 @@ import sys
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from .database import connect_to_mongo, close_mongo_connection
+from database import connect_to_mongo, close_mongo_connection
 from middleware import LoggingMiddleware, RateLimitMiddleware, MetadataScrubbingMiddleware
 
 # Import route modules
